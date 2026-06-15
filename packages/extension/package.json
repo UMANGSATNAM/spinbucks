@@ -1,0 +1,55 @@
+{
+  "name": "spinads",
+  "displayName": "SpinAds — earn while your agent thinks",
+  "description": "Shows a sponsored line while your AI coding agent is working. You earn 60% of ad revenue.",
+  "version": "0.1.0",
+  "publisher": "spinads",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://example.com/spinads.git" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        { "id": "spinads", "title": "SpinAds", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "spinads": [
+        { "type": "webview", "id": "spinads.adView", "name": "Sponsored" }
+      ]
+    },
+    "commands": [
+      { "command": "spinads.simulateBusy", "title": "SpinAds: Simulate agent busy (demo)" },
+      { "command": "spinads.showEarnings", "title": "SpinAds: Show earnings" },
+      { "command": "spinads.reset", "title": "SpinAds: Reset device & earnings" }
+    ],
+    "configuration": {
+      "title": "SpinAds",
+      "properties": {
+        "spinads.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "Base URL of the SpinAds ad server."
+        },
+        "spinads.adDurationMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "How long an ad stays visible after the agent goes busy (ms)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "package": "vsce package --allow-missing-repository -o spinads.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.0.0"
+  }
+}

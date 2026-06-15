@@ -1,0 +1,9 @@
+# Railway builds the ad server from the root Dockerfile.
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/v1/health"
+healthcheckTimeout = 100
+restartPolicyType = "always"
