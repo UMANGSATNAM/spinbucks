@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { buildApp } from "./app.js";
 import { Db } from "./db.js";
 import { newSecret } from "./security.js";
@@ -5,6 +6,8 @@ import { newSecret } from "./security.js";
 const PORT = Number(process.env.PORT ?? 8080);
 const SERVER_SECRET = process.env.SERVER_SECRET ?? newSecret();
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://postgres:password@localhost:5432/spinads";
+
+console.log(`Starting server. DATABASE_URL is ${process.env.DATABASE_URL ? "SET (Using provided URL)" : "NOT SET (Falling back to localhost)"}`);
 
 const db = new Db(DATABASE_URL);
 

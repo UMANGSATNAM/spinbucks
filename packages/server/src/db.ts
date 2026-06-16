@@ -9,7 +9,10 @@ export class Db {
   private pool: Pool;
 
   constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString });
+    this.pool = new Pool({ 
+      connectionString,
+      ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false }
+    });
   }
 
   async init(): Promise<void> {
