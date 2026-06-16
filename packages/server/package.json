@@ -14,7 +14,9 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "fastify": "^5.8.5",
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "razorpay": "^2.9.6",
+    "stripe": "^22.2.1"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
