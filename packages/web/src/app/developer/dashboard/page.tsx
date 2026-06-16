@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { API_URL } from "@/lib/config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,16 @@ export default function DeveloperDashboard() {
   const [data, setData] = useState<{ earningsMicros: number; payouts: any[] } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Automatically login if deviceId is provided in URL
+    const params = new URLSearchParams(window.location.search);
+    const idFromUrl = params.get("deviceId");
+    if (idFromUrl) {
+      setDeviceId(idFromUrl);
+      fetchEarnings(idFromUrl);
+    }
+  }, []);
 
   const fetchEarnings = async (devId: string) => {
     try {
@@ -131,11 +141,12 @@ export default function DeveloperDashboard() {
               </div>
               <Button 
                 onClick={handlePayout} 
-                disabled={loading || (data?.earningsMicros || 0) < 1_000_000} // Minimum ₹1 to payout
+                disabled={loading || (data?.earningsMicros || 0) < 100_000_000} // Minimum ₹100 to payout
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 Request Payout
               </Button>
+              <p className="text-xs text-zinc-500 mt-2 text-center">Minimum payout: ₹100</p>
               {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
             </CardContent>
           </Card>

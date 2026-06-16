@@ -105,8 +105,9 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("spinads.simulateBusy", () => detector.fire()),
     vscode.commands.registerCommand("spinads.showEarnings", () => {
-      const micros = context.globalState.get<number>("earningsMicros") || 0;
-      vscode.window.showInformationMessage(`SpinAds: you've earned ₹${(micros / MICROS_PER_RUPEE).toFixed(4)} so far.`);
+      // Open the dashboard directly with this device ID
+      const webUrl = cfg().get<string>("webUrl") || "http://localhost:3000";
+      vscode.env.openExternal(vscode.Uri.parse(`${webUrl}/developer/dashboard?deviceId=${deviceId}`));
     }),
     vscode.commands.registerCommand("spinads.reset", async () => {
       await context.secrets.delete("spinads.secret");

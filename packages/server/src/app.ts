@@ -200,6 +200,13 @@ export function buildApp(opts: AppOpts): FastifyInstance {
   app.post("/v1/developer/payout", async (req, reply) => {
     const { deviceId } = (req.body ?? {}) as any;
     if (!deviceId) return reply.code(400).send({ error: "deviceId required" });
+    
+    // Check if balance is at least ₹100 (100,000,000 micros)
+    const dev = await db.developerByDevice(deviceId);
+    if (!dev || dev.earnings_micros < 100_000_000) {
+      return reply.code(400).send({ error: "Minimum payout is ₹100" });
+    }
+    
     // NOTE: production should require a device-signed request here, and only
     // settle once the developer has connected a Stripe Connect / RazorpayX
     // payout method. For now this records a pending payout.
