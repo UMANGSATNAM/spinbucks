@@ -6,28 +6,29 @@ import { signDevice } from "./security.js";
 
 const SERVER_SECRET = "test-secret";
 
-function setup() {
-  const db = new Db(":memory:");
+async function setup() {
+  const db = new Db(process.env.TEST_DATABASE_URL ?? "postgres://postgres:password@localhost:5432/spinads_test");
+  await db.init();
   const app = buildApp({ db, serverSecret: SERVER_SECRET });
   return { db, app };
 }
 const j = (r: any) => JSON.parse(r.body);
 
 test("advertiser self-serve: create account → get API key", async () => {
-  const { app } = setup();
+  const { app } = await setup();
   const r = await app.inject({ method: "POST", url: "/v1/advertisers", payload: { email: "a@x.com", name: "Acme" } });
   assert.equal(r.statusCode, 200);
   assert.ok(j(r).apiKey && j(r).id);
 });
 
 test("campaign create requires a valid advertiser key", async () => {
-  const { app } = setup();
+  const { app } = await setup();
   const noKey = await app.inject({ method: "POST", url: "/v1/campaigns", payload: { adLine: "x", destinationUrl: "https://x.com", bidCpm: 150, dailyBudget: 1000 } });
   assert.equal(noKey.statusCode, 401);
 });
 
 test("created campaign appears on the live leaderboard", async () => {
-  const { app } = setup();
+  const { app } = await setup();
   const key = j(await app.inject({ method: "POST", url: "/v1/advertisers", payload: { email: "a@x.com", name: "Acme" } })).apiKey;
   await app.inject({
     method: "POST", url: "/v1/campaigns", headers: { "x-advertiser-key": key },
@@ -41,7 +42,7 @@ test("created campaign appears on the live leaderboard", async () => {
 });
 
 test("top-up returns 'not configured' gracefully when no payment keys are set", async () => {
-  const { app } = setup();
+  const { app } = await setup();
   const key = j(await app.inject({ method: "POST", url: "/v1/advertisers", payload: { email: "a@x.com", name: "Acme" } })).apiKey;
   const r = await app.inject({ method: "POST", url: "/v1/advertiser/topup", headers: { "x-advertiser-key": key }, payload: { amountInr: 1000, provider: "stripe" } });
   assert.equal(r.statusCode, 200);
@@ -49,12 +50,16 @@ test("top-up returns 'not configured' gracefully when no payment keys are set", 
 });
 
 test("developer dashboard shows earnings, then payout moves them to pending", async () => {
-  const { db, app } = setup();
+  const { db, app } = await setup();
   // advertiser + campaign
   const key = j(await app.inject({ method: "POST", url: "/v1/advertisers", payload: { email: "a@x.com", name: "Acme" } })).apiKey;
   await app.inject({ method: "POST", url: "/v1/campaigns", headers: { "x-advertiser-key": key },
     payload: { adLine: "Try Acme", destinationUrl: "https://acme.com", brandName: "Acme", bidCpm: 300, dailyBudget: 50000 } });
-  db.creditAdvertiser(db.advertiserIdByKey(key)!, 100000);
+  
+  const advId = await db.advertiserIdByKey(key);
+  if (advId) {
+    await db.creditAdvertiser(advId, 100000);
+  }
 
   // developer earns from one impression
   const dev = "dash-dev";
@@ -80,7 +85,7 @@ test("developer dashboard shows earnings, then payout moves them to pending", as
 });
 
 test("portal pages render", async () => {
-  const { app } = setup();
+  const { app } = await setup();
   const adv = await app.inject({ method: "GET", url: "/portal/advertiser" });
   const dev = await app.inject({ method: "GET", url: "/portal/developer" });
   assert.match(adv.body, /SpinBucks — Advertisers/);

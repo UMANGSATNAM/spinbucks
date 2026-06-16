@@ -49,14 +49,14 @@ export function buildApp(opts: AppOpts): FastifyInstance {
   app.post("/v1/register", async (req, reply) => {
     const { deviceId } = (req.body ?? {}) as { deviceId?: string };
     if (!deviceId) return reply.code(400).send({ error: "deviceId required" });
-    return db.registerDevice(deviceId);
+    return await db.registerDevice(deviceId);
   });
 
   // Run an auction and (if a winner exists) return the ad + a signed serveToken.
   app.post("/v1/serve", async (req, reply) => {
     const b = (req.body ?? {}) as any;
     const { deviceId, ts, sig, geo, surface } = b;
-    const secret = deviceId && db.deviceSecret(deviceId);
+    const secret = deviceId && await db.deviceSecret(deviceId);
     if (!secret || !verifyDevice(secret, deviceId, ts, sig)) {
       return reply.code(401).send({ error: "bad_signature" });
     }
@@ -68,7 +68,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
       clickMultiplier,
       now: Date.now(),
     };
-    const result = runAuction(db.activeCampaigns(), ctx);
+    const result = runAuction(await db.activeCampaigns(), ctx);
     if (!result.served || !result.campaign) {
       return reply.code(204).send();
     }
@@ -78,7 +78,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
       d: deviceId,
       p: result.clearingCpm!,
     });
-    db.recordServe(token, result.campaign.id, deviceId, result.clearingCpm!);
+    await db.recordServe(token, result.campaign.id, deviceId, result.clearingCpm!);
 
     return {
       serveToken: token,
@@ -97,7 +97,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     const b = (req.body ?? {}) as any;
     const { deviceId, ts, sig, serveToken, type } = b;
 
-    const secret = deviceId && db.deviceSecret(deviceId);
+    const secret = deviceId && await db.deviceSecret(deviceId);
     if (!secret || !verifyDevice(secret, deviceId, ts, sig)) {
       return reply.code(401).send({ error: "bad_signature" });
     }
@@ -106,7 +106,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     }
 
     // Rate limit: a real session can't generate hundreds of events a minute.
-    if (db.countRecentEvents(deviceId, Date.now() - rateWindowMs) >= rateMaxEvents) {
+    if (await db.countRecentEvents(deviceId, Date.now() - rateWindowMs) >= rateMaxEvents) {
       return reply.code(429).send({ error: "rate_limited" });
     }
 
@@ -114,7 +114,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     if (!payload || payload.d !== deviceId) {
       return reply.code(401).send({ error: "bad_token" });
     }
-    const serve = db.getServe(serveToken);
+    const serve = await db.getServe(serveToken);
     if (!serve) return reply.code(404).send({ error: "unknown_serve" });
 
     // Replay / ordering guards.
@@ -132,9 +132,9 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     const gross = accrue(payload.p, impressions, clicks, clickMultiplier);
     const split = revenueSplit(gross, platformPct);
 
-    db.settle(payload.c, deviceId, gross, split.platformMicros, split.developerMicros);
-    db.markServe(serveToken, type === "impression" ? "impression_done" : "click_done");
-    db.logEvent(serveToken, type, deviceId, Date.now());
+    await db.settle(payload.c, deviceId, gross, split.platformMicros, split.developerMicros);
+    await db.markServe(serveToken, type === "impression" ? "impression_done" : "click_done");
+    await db.logEvent(serveToken, type, deviceId, Date.now());
 
     return { ok: true, grossMicros: gross, developerMicros: split.developerMicros };
   });
@@ -144,18 +144,18 @@ export function buildApp(opts: AppOpts): FastifyInstance {
   app.post("/v1/advertisers", async (req, reply) => {
     const { email, name } = (req.body ?? {}) as any;
     if (!email || !name) return reply.code(400).send({ error: "email and name required" });
-    return db.createAdvertiserWithKey(email, name, 0);
+    return await db.createAdvertiserWithKey(email, name, 0);
   });
 
   app.post("/v1/campaigns", async (req, reply) => {
-    const advId = db.advertiserIdByKey(String(req.headers["x-advertiser-key"] ?? ""));
+    const advId = await db.advertiserIdByKey(String(req.headers["x-advertiser-key"] ?? ""));
     if (!advId) return reply.code(401).send({ error: "bad_advertiser_key" });
     const b = (req.body ?? {}) as any;
     if (!b.adLine || !b.destinationUrl || !b.bidCpm || !b.dailyBudget) {
       return reply.code(400).send({ error: "adLine, destinationUrl, bidCpm, dailyBudget required" });
     }
     const id = newId("camp");
-    db.createCampaign({
+    await db.createCampaign({
       id, advertiserId: advId, adLine: String(b.adLine).slice(0, 60), destinationUrl: b.destinationUrl,
       brandName: b.brandName, bidCpm: Number(b.bidCpm), dailyBudget: Number(b.dailyBudget),
       historicalCtr: 0.01, qualityScore: 1, status: "active", targetGeo: b.targetGeo,
@@ -163,12 +163,12 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     return { id, status: "active" };
   });
 
-  app.get("/v1/leaderboard", async () => db.leaderboard());
+  app.get("/v1/leaderboard", async () => await db.leaderboard());
 
   // === #6 Payments — advertiser top-up + webhook =============================
 
   app.post("/v1/advertiser/topup", async (req, reply) => {
-    const advId = db.advertiserIdByKey(String(req.headers["x-advertiser-key"] ?? ""));
+    const advId = await db.advertiserIdByKey(String(req.headers["x-advertiser-key"] ?? ""));
     if (!advId) return reply.code(401).send({ error: "bad_advertiser_key" });
     const { amountInr, provider } = (req.body ?? {}) as any;
     if (!amountInr || amountInr < 1) return reply.code(400).send({ error: "amountInr required" });
@@ -184,7 +184,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     const raw = (req as any).rawBody as Buffer;
     const credit = await handleStripeWebhook(paymentsEnv(), raw, sig);
     if (!credit) return reply.code(400).send({ error: "ignored" });
-    db.creditAdvertiser(credit.advId, credit.paise);
+    await db.creditAdvertiser(credit.advId, credit.paise);
     return { ok: true };
   });
 
@@ -192,9 +192,9 @@ export function buildApp(opts: AppOpts): FastifyInstance {
 
   app.get("/v1/developer/earnings", async (req, reply) => {
     const deviceId = String((req.query as any)?.deviceId ?? "");
-    const dev = db.developerByDevice(deviceId);
+    const dev = await db.developerByDevice(deviceId);
     if (!dev) return reply.code(404).send({ error: "unknown_device" });
-    return { earningsMicros: dev.earnings_micros, payouts: db.payoutsFor(deviceId) };
+    return { earningsMicros: dev.earnings_micros, payouts: await db.payoutsFor(deviceId) };
   });
 
   app.post("/v1/developer/payout", async (req, reply) => {
@@ -203,7 +203,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     // NOTE: production should require a device-signed request here, and only
     // settle once the developer has connected a Stripe Connect / RazorpayX
     // payout method. For now this records a pending payout.
-    return db.requestPayout(deviceId);
+    return await db.requestPayout(deviceId);
   });
 
   // === Served portal pages ====================================================

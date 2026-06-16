@@ -7,15 +7,16 @@ import { MICROS_PER_PAISA } from "../../auction/dist/types.js";
 
 const SERVER_SECRET = "test-server-secret";
 
-function setup() {
-  const db = new Db(":memory:");
-  const adv = db.createAdvertiser("a@x.com", "Acme", 1000); // ₹1000 balance
-  db.createCampaign({
+async function setup() {
+  const db = new Db(process.env.TEST_DATABASE_URL ?? "postgres://postgres:password@localhost:5432/spinads_test");
+  await db.init();
+  const adv = await db.createAdvertiser("a@x.com", "Acme", 1000); // ₹1000 balance
+  await db.createCampaign({
     id: "camp1", advertiserId: adv, adLine: "Try Acme", destinationUrl: "https://acme.com",
     brandName: "Acme", bidCpm: 300, dailyBudget: 100000, historicalCtr: 0.02, qualityScore: 1, status: "active",
   });
   // a weaker second bidder so there's a real second price
-  db.createCampaign({
+  await db.createCampaign({
     id: "camp2", advertiserId: adv, adLine: "Try Beta", destinationUrl: "https://beta.com",
     bidCpm: 150, dailyBudget: 100000, historicalCtr: 0.01, qualityScore: 1, status: "active",
   });
@@ -34,13 +35,13 @@ function signed(secret: string, deviceId: string, extra: object = {}) {
 }
 
 test("health check", async () => {
-  const { app } = setup();
+  const { app } = await setup();
   const r = await app.inject({ method: "GET", url: "/v1/health" });
   assert.equal(JSON.parse(r.body).ok, true);
 });
 
 test("full loop: serve → impression → click moves money correctly", async () => {
-  const { app, db, adv } = setup();
+  const { app, db, adv } = await setup();
   const dev = "machine-A";
   const secret = await register(app, db, dev);
 
@@ -56,17 +57,17 @@ test("full loop: serve → impression → click moves money correctly", async ()
   assert.equal(clk.statusCode, 200);
 
   // Developer must have earned 60% of (1 impression + 1 click) gross.
-  const devEarn = db.developerEarnings(dev);
-  const platRev = db.platformRevenue();
+  const devEarn = await db.developerEarnings(dev);
+  const platRev = await db.platformRevenue();
   assert.ok(devEarn > 0 && platRev > 0);
   // 60/40 relationship holds (developer ≈ 1.5× platform, within rounding)
   assert.ok(Math.abs(devEarn / platRev - 1.5) < 0.01);
   // advertiser balance dropped by exactly gross
-  assert.equal(db.advertiserBalance(adv), 1000 * MICROS_PER_PAISA - (devEarn + platRev));
+  assert.equal(await db.advertiserBalance(adv), 1000 * MICROS_PER_PAISA - (devEarn + platRev));
 });
 
 test("rejects forged device signature", async () => {
-  const { app, db } = setup();
+  const { app, db } = await setup();
   const dev = "machine-B";
   await register(app, db, dev);
   const bad = { deviceId: dev, ts: Date.now(), sig: "garbage", geo: "IN" };
@@ -75,7 +76,7 @@ test("rejects forged device signature", async () => {
 });
 
 test("rejects fabricated serve token", async () => {
-  const { app, db } = setup();
+  const { app, db } = await setup();
   const dev = "machine-C";
   const secret = await register(app, db, dev);
   const r = await app.inject({
@@ -86,7 +87,7 @@ test("rejects fabricated serve token", async () => {
 });
 
 test("blocks duplicate impression (replay)", async () => {
-  const { app, db } = setup();
+  const { app, db } = await setup();
   const dev = "machine-D";
   const secret = await register(app, db, dev);
   const { serveToken } = JSON.parse((await app.inject({ method: "POST", url: "/v1/serve", payload: signed(secret, dev) })).body);
@@ -96,7 +97,7 @@ test("blocks duplicate impression (replay)", async () => {
 });
 
 test("blocks click before impression", async () => {
-  const { app, db } = setup();
+  const { app, db } = await setup();
   const dev = "machine-E";
   const secret = await register(app, db, dev);
   const { serveToken } = JSON.parse((await app.inject({ method: "POST", url: "/v1/serve", payload: signed(secret, dev) })).body);
@@ -105,7 +106,7 @@ test("blocks click before impression", async () => {
 });
 
 test("rate limits a flooding device", async () => {
-  const { db } = setup();
+  const { db } = await setup();
   const app = buildApp({ db, serverSecret: SERVER_SECRET, rateMaxEvents: 3 });
   const dev = "flooder";
   const secret = await register(app, db, dev);

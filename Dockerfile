@@ -21,4 +21,4 @@ WORKDIR /app/packages/server
 ENV PORT=8080
 # Set SERVER_SECRET and a persistent DB_PATH (Railway volume) in the environment.
 EXPOSE 8080
-CMD ["node", "--experimental-sqlite", "dist/index.js"]
+CMD ["node", "dist/index.js"]

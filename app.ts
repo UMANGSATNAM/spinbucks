@@ -43,6 +43,7 @@ export function buildApp(opts: AppOpts): FastifyInstance {
     }
   });
 
+  app.get("/", async () => ({ ok: true, service: "spinads-api" }));
   app.get("/v1/health", async () => ({ ok: true }));
 
   // Device registration → hand out a per-device secret used to sign future calls.
